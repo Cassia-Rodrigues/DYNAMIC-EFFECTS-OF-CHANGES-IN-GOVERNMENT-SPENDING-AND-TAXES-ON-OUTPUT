@@ -1,0 +1,321 @@
+---
+title: "Project 2 | Econ 684: Time Series Forecasting"
+author: "Cassia Rodrigues- UID:119129180"
+date: "2024-05-16"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+setwd("/Users/User/Desktop/Applied Economics/ECON 684/Project 2")
+# Specify a CRAN mirror
+options(repos = c(CRAN = "http://cran.us.r-project.org"))
+output:
+  pdf_document: 
+    extra_dependencies: ["geometry"]
+always_allow_html: true
+
+```{r setup, include=FALSE}
+
+# Specify a CRAN mirror directly in install.packages
+install.packages("vars", repos = "http://cran.us.r-project.org")
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# Alternatively, set the repos option globally
+options(repos = c(CRAN = "http://cran.us.r-project.org"))
+# Install the tidyverse package
+install.packages("tidyverse")
+install.packages("webshot")
+webshot::install_phantomjs() # Required for webshot to work
+
+# Load the tidyverse package
+library(tidyverse)
+library(zoo)
+install.packages("vars")
+library(vars)
+library(forecast)
+library(ggplot2)
+install.packages("TSstudio")
+library(TSstudio)
+
+
+data <- read.csv("/Users/User/Desktop/Applied Economics/ECON 684/Project 2/BPish_data.csv")
+data$Period <- as.yearqtr(data$Date, format = "%Y %Q")
+data$Date <- as.Date(data$Period, format = "%YQ%q")
+
+# Print the updated dataset
+print(data)
+
+data <- as_tibble(data)
+data <- data[, c(1, 5, 2, 3, 4)]
+
+tsdata <- data[, c(3, 4, 5)]
+colnames(tsdata) <- c("taxrev", "govexp", "output")
+
+# generate time-series using observations 
+tsdata = ts(tsdata,frequency = 4, start = c(1950))
+
+ydata <- window(tsdata, start = c(1960,1), end = c(1997,4))
+head(ydata)
+class(ydata)
+#Plot
+ts_plot(ydata)
+```
+
+```{r SVAR}
+
+#Creating a matrix
+#SVAR restrictions
+bmtrix <-diag(1,3)
+bmtrix[3, 1:2]<- NA 
+bmtrix[1,3]<- -2.08
+bmtrix
+
+# Access columns Tax.Revenues, Govt.Spending, and Output
+sv <- cbind(ydata)
+colnames(sv)<-cbind("Tax","Govt_spending","Output")
+
+#Estimating the model
+# Estimate the VAR model with linear and quadratic trends
+Model1 <- vars::VAR(sv, p = 4, type = "both")
+
+# Estimate the VAR model with stochastic trends (constant term)
+Model2 <- vars::VAR(sv, p = 4, season = NULL, exog = NULL, type = "const")
+
+SVARMod1 <- SVAR(Model1, Aestmethod = c("direct"), Bmat = bmtrix, hessian = TRUE)
+SVARMod1
+
+SVARMod2 <- SVAR(Model2, Aestmethod = c("direct"), Bmat = bmtrix, hessian = TRUE)
+SVARMod2
+
+#Impulse Response Function
+
+# Impulse Response Function for Output in the (LT) Linear Trend model
+SVAgdp_LT <- irf(SVARMod1, impulse="Tax", response= "Output")
+plot(SVAgdp_LT, main = "IRF: Output in LT Linear Trend Model")
+
+# Impulse Response Function for Output in the (ST) Stochastic model
+SVAgdp_ST <- irf(SVARMod2, impulse="Tax", response= "Output")
+plot(SVAgdp_ST, main = "IRF: Output in ST Stochastic Model")
+
+# Impulse Response Function for Tax in the (LT) Linear Trend model
+SVAtax_LT <- irf(SVARMod1, impulse="Tax", response= "Tax")
+plot(SVAtax_LT, main = "IRF: Tax in LT Linear Trend Model")
+
+# Impulse Response Function for Tax in the (ST) Stochastic model
+SVAtax_ST <- irf(SVARMod2, impulse="Tax", response= "Tax")
+plot(SVAtax_ST, main = "IRF: Tax in ST Stochastic Model")
+
+# Impulse Response Function for Government Spending in in the (LT) Linear Trend model
+SVAgovtsp_LT <- irf(SVARMod1, impulse="Tax", response= "Govt_spending")
+plot(SVAgovtsp_LT, main = "IRF: Government Spending in LT Linear Trend Model")
+
+# Impulse Response Function for Government Spending in the (ST) Stochastic model
+SVAgovtsp_ST <- irf(SVARMod2, impulse="Tax", response= "Govt_spending")
+plot(SVAgovtsp_ST, main = "IRF: Government Spending in ST Stochastic Model")
+```
+Since there is a gradual decline the series does not appear to be stationary.
+
+```{r Setup FRED}
+
+install.packages("fredr")
+library(fredr)
+
+fredr_set_key("a17be22ff0bcf6b2461cc89bc9a9c7a3")
+
+data_A794RX0Q048SBEA <-fredr(
+  series_id = "A794RX0Q048SBEA",
+  observation_start = as.Date("1960-01-01"),
+  observation_end = as.Date("1997-04-01"),
+  frequency = "q", # quarterly
+  units = "chg" # change over previous value
+)
+
+data_CPIAUCSL <-fredr(
+  series_id = "CPIAUCSL",
+  observation_start = as.Date("1960-01-01"),
+  observation_end = as.Date("1997-04-01"),
+  frequency = "q", # quarterly
+  units = "chg" # change over previous value
+)
+data_EXPGSC1 <-fredr(
+  series_id = "EXPGSC1",
+  observation_start = as.Date("1960-01-01"),
+  observation_end = as.Date("1997-04-01"),
+  frequency = "q", # quarterly
+  units = "chg" # change over previous value
+)
+data_FEDFUNDS <-fredr(
+  series_id = "FEDFUNDS",
+  observation_start = as.Date("1960-01-01"),
+  observation_end = as.Date("1997-04-01"),
+  frequency = "q", # quarterly
+  units = "chg" # change over previous value
+)
+data_GPDIC1 <-fredr(
+  series_id = "GPDIC1",
+  observation_start = as.Date("1960-01-01"),
+  observation_end = as.Date("1997-04-01"),
+  frequency = "q", # quarterly
+  units = "chg" # change over previous value
+)
+
+# Merge the datasets
+data <- merge(data_A794RX0Q048SBEA[, c("date", "value")], data_CPIAUCSL[, c("date", "value")], by = "date", all = FALSE)
+data <- merge(data, data_EXPGSC1[, c("date", "value")], by = "date", all = FALSE)
+data <- merge(data, data_FEDFUNDS[, c("date", "value")], by = "date", all = FALSE)
+data <- merge(data, data_GPDIC1[, c("date", "value")], by = "date", all = FALSE)
+names(data) <- c("date", "data_consumption", "data_CPI", "data_EXPGSC", "data_FEDFUNDS", "data_GPDIC1")
+data <- data[complete.cases(data), ]
+
+data_df <- as.data.frame(data)
+
+# Assuming your 'data' data frame contains a column named 'date'
+data_without_date <- subset(data, select = -date)
+
+# Convert data frame to time series
+ts_data <- ts(data_without_date, start = c(1960), frequency = 4)
+ts_data
+
+# Assuming your 'data' data frame contains numeric columns that you want to log-transform
+log_data <- log(data_without_date)
+
+# Convert log-transformed data frame to time series
+ts_log_data <- ts(log_data, start = c(1960), frequency = 4)
+
+# Merge the time series into one dataset
+merged <- cbind(ydata, ts_data)
+
+#Plot
+ts_plot(ts_data)
+
+colnames(merged) <- c("Tax", "Govt_spending", "Output", "rcons", "uscpi","exports", "fedfunds", "invest")
+ydata_all = ts(merged,frequency = 4,start = c(1960))
+```
+
+```{r Tax shocks on Consumption}
+# CONSUMPTION    
+# introducing consumption (drop other vars)
+ydata_cons <- ydata_all[,c(1,2,3,4)]
+# Remove rows with missing values
+ydata_cons_clean <- na.omit(ydata_cons)
+
+
+Model1_con <- vars::VAR(ydata_cons_clean, p = 4, type = "both")
+
+# Estimate the VAR model with stochastic trends (constant term)
+Model2_con <- vars::VAR(ydata_cons_clean, p = 4, season = NULL, exog = NULL, type = "const")
+
+# Consumption: Model of Identifying Restrictions
+bmtrix1 <- diag(1, 4)
+bmtrix1[1,3]<- NA
+bmtrix1[3, 1:2]<- NA   
+bmtrix1[4, 1:3]<- NA  
+
+SVARMod1_con <- SVAR(Model1_con, Aestmethod = c("direct"), Bmat = bmtrix1, hessian = TRUE)
+SVARMod1
+
+SVARMod2_con <- SVAR(Model2_con, Aestmethod = c("direct"), Bmat = bmtrix1, hessian = TRUE)
+SVARMod2
+
+#Impulse Response Function
+
+# Impulse Response Function for Output in the (LT) Linear Trend model
+SVAgdp_LT_con <- irf(SVARMod1_con, impulse="Tax", response= "Output")
+plot(SVAgdp_LT_con, main = "IRF: Output in LT Linear Trend Model")
+
+# Impulse Response Function for Output in the (ST) Stochastic model
+SVAgdp_ST_con <- irf(SVARMod2_con, impulse="Tax", response= "Output")
+plot(SVAgdp_ST_con, main = "IRF: Output in ST Stochastic Model")
+
+# Impulse Response Function for Tax in the (LT) Linear Trend model
+SVAtax_LT_con <- irf(SVARMod1_con, impulse="Tax", response= "Tax")
+plot(SVAtax_LT_con, main = "IRF: Tax in LT Linear Trend Model")
+
+# Impulse Response Function for Tax in the (ST) Stochastic model
+SVAtax_ST_con <- irf(SVARMod2_con, impulse="Tax", response= "Tax")
+plot(SVAtax_ST_con, main = "IRF: Tax in ST Stochastic Model")
+
+# Impulse Response Function for Government Spending in in the (LT) Linear Trend model
+SVAgovtsp_LT_con <- irf(SVARMod1_con, impulse="Tax", response= "Govt_spending")
+plot(SVAgovtsp_LT_con, main = "IRF: Government Spending in LT Linear Trend Model")
+
+# Impulse Response Function for Government Spending in the (ST) Stochastic model
+SVAgovtsp_ST_con <- irf(SVARMod2_con, impulse="Tax", response= "Govt_spending")
+plot(SVAgovtsp_ST_con, main = "IRF: Government Spending in ST Stochastic Model")
+
+# Impulse Response Function for Consumption in in the (LT) Linear Trend model
+SVArcons_LT_con <- irf(SVARMod1_con, impulse="Tax", response= "rcons")
+plot(SVArcons_LT_con, main = "IRF: Consumption in LT Linear Trend Model")
+
+# Impulse Response Function for Consumption in the (ST) Stochastic model
+SVArcons_ST_con <- irf(SVARMod2_con, impulse="Tax", response= "rcons")
+plot(SVArcons_ST_con, main = "IRF: Consumption in ST Stochastic Model")
+
+```
+
+```{r Tax shocks on Investment}
+# Investment    
+# introducing consumption (drop other vars)
+ydata_inv <- ydata_all[,c(1,2,3,8)]
+
+# Remove rows with missing values
+ydata_inv_clean <- na.omit(ydata_inv)
+
+
+Model1_inv <- vars::VAR(ydata_inv_clean, p = 4, type = "both")
+
+# Estimate the VAR model with stochastic trends (constant term)
+Model2_inv <- vars::VAR(ydata_inv_clean, p = 4, season = NULL, exog = NULL, type = "const")
+
+# Consumption: Model of Identifying Restrictions
+bmtrix2 <- diag(1, 4)
+bmtrix2[1,3]<- -2.08
+bmtrix2[3, 1:2]<- NA   
+bmtrix2[4, 1:3]<- NA  
+
+SVARMod1_inv <- SVAR(Model1_inv, Aestmethod = c("direct"), Bmat = bmtrix1, hessian = TRUE)
+SVARMod1
+
+SVARMod2_inv <- SVAR(Model2_inv, Aestmethod = c("direct"), Bmat = bmtrix1, hessian = TRUE)
+SVARMod2
+
+#Impulse Response Function
+
+# Impulse Response Function for Output in the (LT) Linear Trend model
+SVAgdp_LT_inv <- irf(SVARMod1_inv, impulse="Tax", response= "Output")
+plot(SVAgdp_LT_inv, main = "IRF: Output in LT Linear Trend Model")
+
+# Impulse Response Function for Output in the (ST) Stochastic model
+SVAgdp_ST_inv <- irf(SVARMod2_inv, impulse="Tax", response= "Output")
+plot(SVAgdp_ST_inv, main = "IRF: Output in ST Stochastic Model")
+
+# Impulse Response Function for Tax in the (LT) Linear Trend model
+SVAtax_LT_inv <- irf(SVARMod1_inv, impulse="Tax", response= "Tax")
+plot(SVAtax_LT_inv, main = "IRF: Tax in LT Linear Trend Model")
+
+# Impulse Response Function for Tax in the (ST) Stochastic model
+SVAtax_ST_inv <- irf(SVARMod2_inv, impulse="Tax", response= "Tax")
+plot(SVAtax_ST_inv, main = "IRF: Tax in ST Stochastic Model")
+
+# Impulse Response Function for Government Spending in in the (LT) Linear Trend model
+SVAgovtsp_LT_inv <- irf(SVARMod1_inv, impulse="Tax", response= "Govt_spending")
+plot(SVAgovtsp_LT_inv, main = "IRF: Government Spending in LT Linear Trend Model")
+
+# Impulse Response Function for Government Spending in the (ST) Stochastic model
+SVAgovtsp_ST_inv <- irf(SVARMod2_inv, impulse="Tax", response= "Govt_spending")
+plot(SVAgovtsp_ST_inv, main = "IRF: Government Spending in ST Stochastic Model")
+
+# Impulse Response Function for Consumption in in the (LT) Linear Trend model
+SVAinv_LT <- irf(SVARMod1_inv, impulse="Tax", response= "invest")
+plot(SVAinv_LT, main = "IRF: Investment in LT Linear Trend Model")
+
+# Impulse Response Function for Consumption in the (ST) Stochastic model
+SVAinv_ST <- irf(SVARMod2_inv, impulse="Tax", response= "invest")
+plot(SVAinv_ST, main = "IRF: Investment in ST Stochastic Model")
+
+```
+
+
+
+
